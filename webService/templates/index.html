@@ -1,0 +1,494 @@
+<!--
+To improve the performance:
+1. Enable your browser's hardware acceleration
+2. Combine GPU.js / turbo.js
+3. Improve the performance of SocialNetworkAnalysis.js / Use networkx to analyse graph
+4. Use easier geometry, like particle system
+5. Support Leap Motion
+6. More layout algorithm in 3D, like Force Atlas and OpenOrd (ref: gephi/gephi wiki on github)
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>VRVisual</title>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0"/>
+    <style>
+        body {
+            font-family: Monospace, monospace;
+            background-color: #ffffff;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        /* ---Format of table START--- */
+        table {
+            border-collapse: collapse;
+            overflow: hidden;
+            -webkit-box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+        }
+
+        th, td {
+            padding: 10px;
+            background-color: rgba(0, 0, 0, 0.5);
+            color: #fff;
+        }
+
+        th {
+            text-align: left;
+        }
+
+        thead th {
+            background-color: rgba(85, 96, 143, 0.4);
+        }
+
+        tbody tr:hover {
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        tbody td {
+            position: relative;
+        }
+
+        tbody td:hover:before {
+            content: "";
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: -9999px;
+            bottom: -9999px;
+            background-color: rgba(0, 0, 0, 0.4);
+            z-index: -1;
+        }
+
+        /* ---Format of table END--- */
+
+        /* ---Format of info grid--- */
+        .info {
+            font-weight: 100;
+            font-family: sans-serif;
+            position: absolute;
+            top: 0;
+            right: 0;
+        }
+
+        .nodeInfo {
+            position: absolute;
+            top: 0;
+            right: 0;
+        }
+
+        .graphInfo {
+            position: absolute;
+            top: 84px;
+            right: 0;
+        }
+    </style>
+</head>
+<body>
+
+<script src="../static/build/three.min.js"></script>
+<script src="../static/js/vr/WebVR.js"></script>
+<script src="../static/js/vr/ViveController.js"></script>
+<script src="../static/js/libs/stats.min.js"></script>
+<script src="../static/js/loaders/OBJLoader.js"></script>
+<script src="../static/js/SocialNetworkAnalysis.js"></script>
+
+<script>
+
+    var scene, camera, rayCaster, renderer, sphereGroup;
+
+    // Intersected list
+    var intersected = [];
+
+    // Information parameters
+    var stats, gui, nodeInfo, SNA, textLoader, textMesh, textFlag = false;
+
+    // Layout data
+    var nodeList, edgeList;
+
+    // HTC Vive controllers
+    var controller1, controller2;
+
+    var tempMatrix = new THREE.Matrix4();
+
+    init();
+    animate();
+
+    function init() {
+        var container = document.createElement('div');
+        container.id = 'container';
+        document.body.appendChild(container);
+
+        // Create a scene
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xe5e5e5);
+
+        // Create a camera
+        var cameraGroup = new THREE.Group();
+        cameraGroup.position.set(0, 0, 0);
+        scene.add(cameraGroup);
+        camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 10);
+        cameraGroup.add(camera);
+
+        // Add environment light
+        scene.add(new THREE.AmbientLight(0xffffff, 3.5));
+
+        // Get layout data
+        nodeList = getNodes();
+        edgeList = getEdges();
+        SNA = new SocialNetworkAnalysis(nodeList, edgeList);
+        getAttributes(SNA);
+
+        // Add data sphere
+        sphereGroup = new THREE.Group();
+        scene.add(sphereGroup);
+        var sGeometry = new THREE.SphereGeometry(1, 8, 8);
+        var unimportantColorStart = 0xbbbbbb;
+        var unimportantColorGap = 0x1d1d1d;
+        var colorGap = 3;
+        var importantColorStart = 0xdddddd;
+        var importantColorRange = 0x0a0a0a;
+        for (var i = 0; i < nodeList.length; ++i) {
+            if (nodeList[i].depth <= colorGap)
+                nodeList[i].color = unimportantColorStart - nodeList[i].depth * unimportantColorGap;
+            else {
+                nodeList[i].color = importantColorStart + Math.random() * importantColorRange;
+            }
+            var material = new THREE.MeshStandardMaterial({
+                color: nodeList[i].color,
+                wireframe: false
+            });
+            var object = new THREE.Mesh(sGeometry, material);
+
+            object.position.x = nodeList[i].x;
+            object.position.y = nodeList[i].y;
+            object.position.z = nodeList[i].z;
+
+            // Object.userData can store some user data
+            object.userData.depth = nodeList[i].depth;
+            object.userData.inDegree = nodeList[i].inDegree;
+            object.userData.outDegree = nodeList[i].outDegree;
+            object.userData.pageRank = nodeList[i].pageRank;
+            object.userData.mid = nodeList[i].id;
+
+            object.scale.setScalar(0.03);
+            sphereGroup.add(object);
+        }
+
+        // Add line START
+        var lineGroup = new THREE.Group();
+        scene.add(lineGroup);
+
+        function findNodeByID(id) {
+            for (var i = 0; i < nodeList.length; ++i) {
+                if (nodeList[i].id === id)
+                    return nodeList[i];
+            }
+        }
+
+        for (i = 0; i < edgeList.length; ++i) {
+            var sourceNode = undefined;
+            var targetNode = undefined;
+            sourceNode = findNodeByID(edgeList[i].source);
+            targetNode = findNodeByID(edgeList[i].target);
+            if (sourceNode !== undefined && targetNode !== undefined) {
+                var lineMaterial = new THREE.LineBasicMaterial({
+                    color: sourceNode.color,
+                    opacity: 0.4,
+                    linewidth: 0.1, // In windows linewidth will be always 1, ref: three.js LineBasicMaterial
+                    transparent: true // Opacity only works when transparent is true, ref: three.js Material
+                });
+                var lineGeometry = new THREE.Geometry();
+                lineGeometry.vertices.push(new THREE.Vector3(sourceNode.x, sourceNode.y, sourceNode.z));
+                lineGeometry.vertices.push(new THREE.Vector3(targetNode.x, targetNode.y, targetNode.z));
+                var oneLine = new THREE.Line(lineGeometry, lineMaterial);
+                lineGroup.add(oneLine);
+            }
+        }
+        // Add line END
+
+        rayCaster = new THREE.Raycaster();
+
+        renderer = new THREE.WebGLRenderer({antialias: true});
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.vr.enabled = true;
+        container.appendChild(renderer.domElement);
+
+        window.addEventListener('resize', onWindowResize, false);
+
+        // Stats is an extension showing fps
+        stats = new Stats();
+        container.appendChild(stats.domElement);
+
+        // Information grid
+        var info = document.createElement('div');
+        info.className = 'info';
+
+        // Node information
+        nodeInfo = document.createElement('div');
+        nodeInfo.className = 'nodeInfo';
+        info.appendChild(nodeInfo);
+
+        // Graph information
+        var graphInfo = document.createElement('div');
+        graphInfo.className = 'graphInfo';
+        graphInfo.innerHTML =
+            "<table>" +
+            "<thead>" +
+            "<tr>" +
+            "<th>AvgDegree</th>" +
+            "<th>AvgWeight</th>" +
+            "<th>Diameter</th>" +
+            "<th>Density</th>" +
+            "<th>AvgShortestPathLength</th>" +
+            "<th>isWeaklyConnected</th>" +
+            "<th>isStronglyConnected</th>" +
+            "</tr>" +
+            "</thead>" +
+            "<tbody>" +
+            "<tr>" +
+            "<td>" + SNA.avgDegree + "</td>" +
+            "<td>" + SNA.avgWeight + "</td>" +
+            "<td>" + SNA.diameter + "</td>" +
+            "<td>" + SNA.density + "</td>" +
+            "<td>" + SNA.avgShortestPathLength + "</td>" +
+            "<td>" + SNA.isWeaklyConnected + "</td>" +
+            "<td>" + SNA.isStronglyConnected + "</td>" +
+            "</tr>" +
+            "</tbody>" +
+            "</table>";
+        info.appendChild(graphInfo);
+        container.appendChild(info);
+
+        // Load two controllers START
+        controller1 = new THREE.ViveController(0);
+        controller1.standingMatrix = renderer.vr.getStandingMatrix();
+        controller1.addEventListener('triggerdown', onTriggerDown);
+        controller1.addEventListener('triggerup', onTriggerUp);
+        scene.add(controller1);
+
+        controller2 = new THREE.ViveController(1);
+        controller2.standingMatrix = renderer.vr.getStandingMatrix();
+        controller2.addEventListener('triggerdown', onTriggerDown);
+        controller2.addEventListener('triggerup', onTriggerUp);
+        scene.add(controller2);
+
+        // Load obj
+        var loader = new THREE.OBJLoader();
+        loader.setPath('/static/obj/');
+        loader.load('vr_controller_vive_1_5.obj', function (object) {
+            var loader = new THREE.TextureLoader();
+            loader.setPath('/static/obj/');
+
+            var controller = object.children[0];
+            controller.material.map = loader.load('onepointfive_texture.png');
+            controller.material.specularMap = loader.load('onepointfive_spec.png');
+
+            controller1.add(object.clone());
+            controller2.add(object.clone());
+        });
+
+        // Assistant line
+        var geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]);
+
+        var line = new THREE.Line(geometry);
+        line.name = 'line';
+        line.scale.z = 5;
+
+        controller1.add(line.clone());
+        controller2.add(line.clone());
+        // Load two controllers END
+
+        // ENTER VR BUTTON
+        document.body.appendChild(WEBVR.createButton(renderer));
+
+        // Text
+        textLoader = new THREE.FontLoader();
+    }
+
+    // getNodes
+    function getNodes() {
+        var nodeList = [];
+        // 'id', 'x', 'y', 'z'
+        {% for node in nodes %}
+            tmp = new Node({{node[0]}}, {{node[1]}}, {{node[2]}}, {{node[3]}});
+            nodeList.push(tmp);
+        {% endfor %}
+        return nodeList;
+    }
+
+    // getEdges
+    function getEdges() {
+        var edgeList = [];
+        // 'source', 'target', 'weight'
+        {%for edge in edges%}
+            tmp = new Edge({{edge[0]}}, {{edge[1]}}, {{edge[2]}});
+            edgeList.push(tmp);
+        {% endfor %}
+        return edgeList;
+    }
+
+    function getAttributes(SNA) {
+        SNA.isWeaklyConnected = {{weak}};
+        SNA.isStronglyConnected = {{strong}};
+        SNA.avgShortestPathLength = {{avgspl}};
+    }
+
+    // Listening to window-resize event
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // Controller Listening to trigger-down event
+    function onTriggerDown(event) {
+        var controller = event.target;
+        var intersections = getIntersections(controller);
+        // Trigger is pressed and have intersections
+        if (intersections.length > 0) {
+            // Object will turn blue
+            var object = intersections[0].object;
+            object.material.emissive.b = 1;
+            controller.userData.selected = object;
+            // Show node information
+            nodeInfo.innerHTML =
+                "<table>" +
+                "<thead>" +
+                "<tr>" +
+                "<th>X</th>" +
+                "<th>Y</th>" +
+                "<th>Z</th>" +
+                "<th>MID</th>" +
+                "<th>PageRank</th>" +
+                "<th>InDegree</th>" +
+                "<th>OutDegree</th>" +
+                "</tr>" +
+                "</thead>" +
+                "<tbody>" +
+                "<tr>" +
+                "<td>" + object.position.x.toFixed(4) + "</td>" +
+                "<td>" + object.position.y.toFixed(4) + "</td>" +
+                "<td>" + object.position.z.toFixed(4) + "</td>" +
+                "<td>" + object.userData.mid + "</td>" +
+                "<td>" + (100 * object.userData.pageRank).toFixed(4) + "%</td>" +
+                "<td>" + object.userData.inDegree + "</td>" +
+                "<td>" + object.userData.outDegree + "</td>" +
+                "</tr>" +
+                "</tbody>" +
+                "</table>";
+            // Show text geometry
+            showText(object);
+        }
+    }
+
+    function showText(OBJECT) {
+        // Only show once when trigger is pressed
+        if (!textFlag) {
+            var str = 'Node Information' +
+                '\nX:' + OBJECT.position.x.toFixed(4) +
+                '\nY:' + OBJECT.position.y.toFixed(4) +
+                '\nZ:' + OBJECT.position.z.toFixed(4) +
+                '\nMID:' + OBJECT.userData.mid +
+                '\nPageRank:' + (100 * OBJECT.userData.pageRank).toFixed(4) + '%' +
+                '\nInDegree:' + OBJECT.userData.inDegree +
+                '\nOutDegree:' + OBJECT.userData.outDegree +
+                '\nGraph Information' +
+                '\nAvgDegree:' + SNA.avgDegree +
+                '\nAvgWeight:' + SNA.avgWeight +
+                '\nDiameter:' + SNA.diameter +
+                '\nDensity:' + SNA.density +
+                '\nAvgShortestPathLength' + SNA.avgShortestPathLength +
+                '\nisWeaklyConnected' + SNA.isWeaklyConnected +
+                '\nisStronglyConnected' + SNA.isStronglyConnected;
+            textLoader.load('/static/fonts/helvetiker_bold.typeface.json', function (font) {
+                var textGeo = new THREE.TextGeometry(str, {
+                    font: font,
+                    size: 0.04,
+                    height: 0.0001
+                });
+                var textMaterial = new THREE.MeshPhongMaterial({color: 0x090909});
+                textMesh = new THREE.Mesh(textGeo, textMaterial);
+                textMesh.position.x = OBJECT.position.x + 0.1;
+                textMesh.position.y = OBJECT.position.y + 0.8;
+                textMesh.position.z = OBJECT.position.z;
+                scene.add(textMesh);
+            });
+            textFlag = true;
+        }
+        if (textMesh)
+            textMesh.lookAt(camera.position);
+    }
+
+    // Release Trigger
+    function onTriggerUp(event) {
+        var controller = event.target;
+        if (controller.userData.selected !== undefined) {
+            var object = controller.userData.selected;
+            // No more blue light
+            object.material.emissive.b = 0;
+            controller.userData.selected = undefined;
+            nodeInfo.innerHTML = "";
+        }
+        // Remove text geometry
+        scene.remove(textMesh);
+        textMesh = undefined;
+        textFlag = false;
+    }
+
+    // Get intersections
+    function getIntersections(controller) {
+        tempMatrix.identity().extractRotation(controller.matrixWorld);
+        rayCaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+        rayCaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+        return rayCaster.intersectObjects(sphereGroup.children);
+    }
+
+    function intersectObjects(controller) {
+        if (controller.userData.selected !== undefined) return;
+
+        var line = controller.getObjectByName('line');
+        var intersections = getIntersections(controller);
+        if (intersections.length > 0) {
+            var object = intersections[0].object;
+            // When the ray cross an object, the object will turn blue
+            object.material.emissive.r = 1;
+            intersected.push(object);
+            // The ray will connect object and your controller
+            line.scale.z = intersections[0].distance;
+        } else {
+            line.scale.z = 5;
+        }
+    }
+
+    function cleanIntersected() {
+        while (intersected.length) {
+            var object = intersected.pop();
+            object.material.emissive.r = 0;
+        }
+    }
+
+    function animate() {
+        renderer.animate(render);
+    }
+
+    function render() {
+        controller1.update();
+        controller2.update();
+
+        cleanIntersected();
+
+        intersectObjects(controller1);
+        intersectObjects(controller2);
+
+        stats.update();
+        renderer.render(scene, camera);
+    }
+
+</script>
+</body>
+</html>
