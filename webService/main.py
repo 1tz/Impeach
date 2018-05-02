@@ -35,10 +35,16 @@ with open('../generateGraph/Weibo/GraphInfo/info.txt', 'r') as f:
 
 app = Flask(__name__)
 
+choice = input('Is your pc equipped with HTC VR device? y/n ')
+if choice == 'n':
+    template = 'dev.html'
+else:
+    template = 'index.html'
+
 
 @app.route('/', methods=['GET'])
 def view():
-    return render_template('index.html', nodes=nodesResult, edges=edgesResult, weak=isWeaklyConnected,
+    return render_template(template, nodes=nodesResult, edges=edgesResult, weak=isWeaklyConnected,
                            strong=isStronglyConnected, avgspl=avgSPL)
 
 

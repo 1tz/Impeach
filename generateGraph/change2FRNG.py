@@ -74,7 +74,6 @@ for N1 in DNodes:
     repulsiveF = np.divide(k2, dist, out=np.zeros_like(dist), where=dist != 0)
     N1['dx'] += np.sum(np.divide(deltaX * repulsiveF, dist, out=np.zeros_like(dist), where=dist != 0))
 
-print DNodes['dx']
 
 # if choose:
 #     np.savetxt('Weibo/Layout/nodes.csv', X=nDNodes[:, 0:4], fmt='%s', delimiter=',')

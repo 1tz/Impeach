@@ -91,28 +91,18 @@ To improve the performance:
 
 <script src="../static/build/three.min.js"></script>
 <script src="../static/js/vr/WebVR.js"></script>
-<script src="../static/js/vr/ViveController.js"></script>
 <script src="../static/js/libs/stats.min.js"></script>
-<script src="../static/js/loaders/OBJLoader.js"></script>
 <script src="../static/js/SocialNetworkAnalysis.js"></script>
 
 <script>
 
-    let scene, camera, rayCaster, renderer, sphereGroup;
-
-    // Intersected list
-    let intersected = [];
+    let scene, camera, rayCaster, renderer, sphereGroup, mouse;
 
     // Information parameters
-    let stats, gui, nodeInfo, SNA, textLoader, textMesh, textFlag = false;
+    let stats, nodeInfo, SNA, textLoader, textMesh, textFlag = false;
 
     // Layout data
     let nodeList, edgeList;
-
-    // HTC Vive controllers
-    let controller1, controller2;
-
-    let tempMatrix = new THREE.Matrix4();
 
     init();
     animate();
@@ -189,7 +179,7 @@ To improve the performance:
             }
         }
 
-        for (i = 0; i < edgeList.length; ++i) {
+        for (let i = 0; i < edgeList.length; ++i) {
             let sourceNode = undefined;
             let targetNode = undefined;
             sourceNode = findNodeByID(edgeList[i].source);
@@ -210,6 +200,7 @@ To improve the performance:
         }
         // Add line END
 
+        mouse = new THREE.Vector2();
         rayCaster = new THREE.Raycaster();
 
         renderer = new THREE.WebGLRenderer({antialias: true});
@@ -219,6 +210,9 @@ To improve the performance:
         container.appendChild(renderer.domElement);
 
         window.addEventListener('resize', onWindowResize, false);
+
+        document.addEventListener('mousedown', onDocumentMouseDown, false);
+        document.addEventListener('touchstart', onDocumentTouchStart, false);
 
         // Stats is an extension showing fps
         stats = new Stats();
@@ -264,45 +258,6 @@ To improve the performance:
         info.appendChild(graphInfo);
         container.appendChild(info);
 
-        // Load two controllers START
-        controller1 = new THREE.ViveController(0);
-        controller1.standingMatrix = renderer.vr.getStandingMatrix();
-        controller1.addEventListener('triggerdown', onTriggerDown);
-        controller1.addEventListener('triggerup', onTriggerUp);
-        scene.add(controller1);
-
-        controller2 = new THREE.ViveController(1);
-        controller2.standingMatrix = renderer.vr.getStandingMatrix();
-        controller2.addEventListener('triggerdown', onTriggerDown);
-        controller2.addEventListener('triggerup', onTriggerUp);
-        scene.add(controller2);
-
-        // Load obj
-        let loader = new THREE.OBJLoader();
-        loader.setPath('/static/obj/');
-        loader.load('vr_controller_vive_1_5.obj', function (object) {
-            let loader = new THREE.TextureLoader();
-            loader.setPath('/static/obj/');
-
-            let controller = object.children[0];
-            controller.material.map = loader.load('onepointfive_texture.png');
-            controller.material.specularMap = loader.load('onepointfive_spec.png');
-
-            controller1.add(object.clone());
-            controller2.add(object.clone());
-        });
-
-        // Assistant line
-        let geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]);
-
-        let line = new THREE.Line(geometry);
-        line.name = 'line';
-        line.scale.z = 5;
-
-        controller1.add(line.clone());
-        controller2.add(line.clone());
-        // Load two controllers END
-
         // ENTER VR BUTTON
         document.body.appendChild(WEBVR.createButton(renderer));
 
@@ -325,7 +280,7 @@ To improve the performance:
     function getEdges() {
         let edgeList = [];
         // 'source', 'target', 'weight'
-        {%for edge in edges%}
+        {% for edge in edges %}
             tmp = new Edge({{edge[0]}}, {{edge[1]}}, {{edge[2]}});
             edgeList.push(tmp);
         {% endfor %}
@@ -345,16 +300,22 @@ To improve the performance:
         renderer.setSize(window.innerWidth, window.innerHeight);
     }
 
-    // Controller Listening to trigger-down event
-    function onTriggerDown(event) {
-        let controller = event.target;
-        let intersections = getIntersections(controller);
-        // Trigger is pressed and have intersections
-        if (intersections.length > 0) {
-            // Object will turn blue
-            let object = intersections[0].object;
-            object.material.emissive.b = 1;
-            controller.userData.selected = object;
+    // Listening to mouse touch start
+    function onDocumentTouchStart(event) {
+        event.preventDefault();
+        event.clientX = event.touches[0].clientX;
+        event.clientY = event.touches[0].clientY;
+        onDocumentMouseDown(event);
+    }
+
+    function onDocumentMouseDown(event) {
+        event.preventDefault();
+        mouse.x = (event.clientX / renderer.domElement.clientWidth) * 2 - 1;
+        mouse.y = -(event.clientY / renderer.domElement.clientHeight) * 2 + 1;
+        rayCaster.setFromCamera(mouse, camera);
+        let intersects = rayCaster.intersectObjects(sphereGroup.children);
+        if (intersects.length > 0) {
+            let object = intersects[0].object;
             // Show node information
             nodeInfo.innerHTML =
                 "<table>" +
@@ -381,13 +342,17 @@ To improve the performance:
                 "</tr>" +
                 "</tbody>" +
                 "</table>";
+            // Remove text geometry
+            scene.remove(textMesh);
+            textMesh = undefined;
+            textFlag = false;
             // Show text geometry
             showText(object);
         }
     }
 
     function showText(OBJECT) {
-        // Only show once when trigger is pressed
+        // Only add once when mouse is pressed
         if (!textFlag) {
             let str = 'Node Information' +
                 '\nX:' + OBJECT.position.x.toFixed(4) +
@@ -420,72 +385,16 @@ To improve the performance:
             });
             textFlag = true;
         }
-        if (textMesh)
-            textMesh.lookAt(camera.position);
-    }
-
-    // Release Trigger
-    function onTriggerUp(event) {
-        let controller = event.target;
-        if (controller.userData.selected !== undefined) {
-            let object = controller.userData.selected;
-            // No more blue light
-            object.material.emissive.b = 0;
-            controller.userData.selected = undefined;
-            nodeInfo.innerHTML = "";
-        }
-        // Remove text geometry
-        scene.remove(textMesh);
-        textMesh = undefined;
-        textFlag = false;
-    }
-
-    // Get intersections
-    function getIntersections(controller) {
-        tempMatrix.identity().extractRotation(controller.matrixWorld);
-        rayCaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
-        rayCaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
-        return rayCaster.intersectObjects(sphereGroup.children);
-    }
-
-    function intersectObjects(controller) {
-        if (controller.userData.selected !== undefined) return;
-
-        let line = controller.getObjectByName('line');
-        let intersections = getIntersections(controller);
-        if (intersections.length > 0) {
-            let object = intersections[0].object;
-            // When the ray cross an object, the object will turn blue
-            object.material.emissive.r = 1;
-            intersected.push(object);
-            // The ray will connect object and your controller
-            line.scale.z = intersections[0].distance;
-        } else {
-            line.scale.z = 5;
-        }
-    }
-
-    function cleanIntersected() {
-        while (intersected.length) {
-            let object = intersected.pop();
-            object.material.emissive.r = 0;
-        }
+        textMesh.lookAt(camera.position);
     }
 
     function animate() {
-        renderer.animate(render);
+        requestAnimationFrame(animate);
+        render();
+        stats.update();
     }
 
     function render() {
-        controller1.update();
-        controller2.update();
-
-        cleanIntersected();
-
-        intersectObjects(controller1);
-        intersectObjects(controller2);
-
-        stats.update();
         renderer.render(scene, camera);
     }
 
