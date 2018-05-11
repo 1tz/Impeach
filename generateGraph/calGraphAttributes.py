@@ -12,7 +12,7 @@ G = nx.DiGraph()
 G.add_nodes_from(nDNodes)
 G.add_edges_from(nDEdges)
 
-with open('Weibo/GraphInfo/info.txt', 'wb') as f:
+with open('Weibo/GraphInfo/info.txt', 'w') as f:
     w = str(nx.is_weakly_connected(G))
     s = str(nx.is_strongly_connected(G))
     avgSPL = str(nx.average_shortest_path_length(G))

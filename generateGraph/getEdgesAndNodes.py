@@ -16,5 +16,5 @@ else:
     nDEdges = np.loadtxt('Twitter/res/higgs-retweet_network.edgelist', dtype=(np.str_, 8), delimiter=' ',
                          usecols=(0, 1))
     nDNodes = np.array(list(set(list(np.ravel(nDEdges)))))
-    print nDNodes.shape
+    print(nDNodes.shape)
     np.savetxt('Twitter/res/nodes.csv', X=nDNodes[...], fmt='%s', delimiter=',')

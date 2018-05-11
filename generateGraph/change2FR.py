@@ -149,7 +149,7 @@ for i in range(1, TIMES + 1):
         n[5] = 0.0
         n[6] = 0.0
         node[0] = tuple(n)
-    print Nodes[0][0][1:4]
+    print(Nodes[0][0][1:4])
 
 nDNodes = np.array(Nodes).reshape(nodesLength, 7)
 nDEdges = np.array(Edges).reshape(edgesLength, 3)
