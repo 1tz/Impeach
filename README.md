@@ -10,6 +10,12 @@ Immersive peach is an immersive analytics tool based on Flask.
 
 ## Preview
 
+![move](./move.gif)
+
+![rotate](./rotate.gif)
+
+
+
 ## Instructions
 
 #### Chrome Canary
