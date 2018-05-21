@@ -22,7 +22,7 @@ Immersive peach is an immersive analytics tool based on Flask.
 4. Input `WebXR` in the serach box
 5. Toggle `WebVR` `WebXR Device API` `WebXR orientation sensor device` to `Enabled`
 6. Relaunch Google Chrome
-7. (Optional) Install [WebVR-Extension](https://github.com/spite/WebVR-Extension) to debug in developer mode
+7. (Optional) Install [WebVR-Extension](https://github.com/spite/WebVR-Extension) to debug in developer mode (HTC VIVE is not necessary if you install this Chrome extendsion)
 
 #### HTC VIVE
 
@@ -36,7 +36,7 @@ Immersive peach is an immersive analytics tool based on Flask.
 
 1. Download [Python 3](https://www.python.org/downloads)
 
-2. Install Python according to the instruction, please toggle `pip`
+2. Install Python according to the instruction, please toggle `pip` and `change path`
 
 3. Install Python packages by pip:
 
@@ -46,32 +46,4 @@ Immersive peach is an immersive analytics tool based on Flask.
 
    `python /your/path/to/impeach/webservice/main.py`
 
-5. Launch Chrome Canary and input `localhost:8080` in the URL bar
-
-## Structure
-
-Impeach
-
-├──generateGraph
-
-│   └── Weibo  
-
-│       ├── GraphInfo
-
-│       ├── Layout
-
-│       └── res 
-
-└──webService
-
-​    ├── static
-
-​    │   ├── build
-
-​    │   ├── fonts
-
-​    │   ├── js
-
-​    │   └── obj
-
-​    └── templates
+5. Launch Google Chrome and input `localhost:8080` in the URL bar
